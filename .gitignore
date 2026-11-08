@@ -1,0 +1,9 @@
+# compiled binaries
+C/server
+server
+
+# macOS
+.DS_Store
+
+# editor config
+.vscode/

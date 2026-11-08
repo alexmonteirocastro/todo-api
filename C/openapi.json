@@ -1,0 +1,162 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Todo API",
+    "description": "A TodoMVC-style CRUD REST API written from scratch in C.",
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "http://localhost:8080" }],
+  "paths": {
+    "/todos": {
+      "get": {
+        "summary": "List all todos",
+        "responses": {
+          "200": {
+            "description": "The list of todos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Todo" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a todo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TodoCreate" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Todo" }
+              }
+            }
+          },
+          "400": { "description": "Title is required" }
+        }
+      }
+    },
+    "/todos/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "format": "uuid" }
+        }
+      ],
+      "get": {
+        "summary": "Fetch a single todo",
+        "responses": {
+          "200": {
+            "description": "The todo",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Todo" }
+              }
+            }
+          },
+          "400": { "description": "Invalid id" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "patch": {
+        "summary": "Partially update a todo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TodoUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated todo",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Todo" }
+              }
+            }
+          },
+          "400": { "description": "Invalid id or body" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "summary": "Fully replace a todo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TodoReplace" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The replaced todo",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Todo" }
+              }
+            }
+          },
+          "400": { "description": "Title and completed are required" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a todo",
+        "responses": {
+          "204": { "description": "Deleted, no content" },
+          "400": { "description": "Invalid id" },
+          "404": { "description": "Not found" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Todo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "completed": { "type": "boolean" }
+        },
+        "required": ["id", "title", "completed"]
+      },
+      "TodoCreate": {
+        "type": "object",
+        "properties": { "title": { "type": "string" } },
+        "required": ["title"]
+      },
+      "TodoUpdate": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "completed": { "type": "boolean" }
+        }
+      },
+      "TodoReplace": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "completed": { "type": "boolean" }
+        },
+        "required": ["title", "completed"]
+      }
+    }
+  }
+}
