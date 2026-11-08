@@ -4,6 +4,12 @@ A complete **TodoMVC-style CRUD REST API written from scratch in C** — no web 
 
 This is the first implementation in a polyglot learning project: the same API contract, re-built across many languages (C++, Rust, Go, Node/Express/Nest, PHP/Laravel) to see what each layer of abstraction does — and hides.
 
+## Visual walkthrough
+
+A slide deck explaining the concepts behind this build — sockets, TCP, HTTP and JSON by hand, the CRUD endpoints, UUIDs, graceful shutdown, and more:
+
+📊 [presentation.pdf](./docs/presentation.pdf)
+
 ## Why
 
 Modern frameworks make building a REST API a few lines of code. This project goes the other way: implement everything by hand — the HTTP parsing, the JSON serialization, the routing, the memory management — to understand what `req.body`, `res.json()`, and `@app.get()` are actually doing underneath.
