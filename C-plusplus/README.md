@@ -1,31 +1,52 @@
 # Todo API — C++
 
 A TodoMVC-style CRUD REST API written **from scratch** in C++ — raw POSIX sockets,
-hand-written HTTP and JSON, no framework. The same contract as the [C version](../C/),
+hand-written HTTP and JSON, no framework. The same contract as the [C version](../C),
 rebuilt to see what C++ changes and what it leaves exactly as C.
 
-Single file: `main.cpp`. No framework, no external libraries — just the standard
-library and the OS socket API.
+The code lives in `no-framework/`, split into modules by concern. (A `framework/`
+version using Crow is planned — see Roadmap.)
 
 ## Build & run
 
 Requires a C++20 compiler (for `std::format`).
 
 ```bash
-g++ -std=c++20 -Wall -Wextra -o server main.cpp
+cd no-framework
+make            # compiles each module, links into ./server
 ./server
 ```
 
-On macOS, if the system `g++` (Apple Clang) lacks `std::format`, use Homebrew GCC:
+`make` builds incrementally — change one file and only that module recompiles.
+To build without make: `g++ -std=c++20 -Wall -Wextra *.cpp -o server`.
 
-```bash
-brew install gcc
-g++-14 -std=c++20 -Wall -Wextra -o server main.cpp
-```
+On macOS, if the system `g++` (Apple Clang) lacks `std::format`, use Homebrew GCC
+(`brew install gcc`, then `make CXX=g++-14`).
 
 > **Run from the folder that holds `openapi.json`.** The server reads the spec with a
 > *relative* path, so `/openapi.json` resolves the file against your current working
 > directory — not where the binary lives.
+
+## Project layout
+
+Split into one module per concern — headers (`.h`) declare, sources (`.cpp`) define.
+
+```
+no-framework/
+├── model.h            # the data types: Todo, BoolField (header-only)
+├── store.h / .cpp     # the in-memory todo store + find_todo_item  (← SQLite lands here)
+├── uuid.h / .cpp      # generate_uuid, is_valid_uuid
+├── http.h / .cpp      # Status, status_line, send_response, read_file, content types
+├── json.h / .cpp      # todo_to_json, todos_to_json, json_get_string, json_get_bool
+├── signals.h / .cpp   # the SIGINT shutdown flag + handler
+├── handlers.h / .cpp  # one function per route (the "routers")
+├── main.cpp           # socket setup, the accept loop, and routing
+├── Makefile
+└── openapi.json
+```
+
+A header *announces* what exists; exactly one `.cpp` *defines* it. The shared store is
+declared `extern std::vector<Todo> todos;` in `store.h` and defined once in `store.cpp`.
 
 ## Endpoints
 
@@ -40,6 +61,7 @@ Listens on **port 8080**. Same contract as every language in the polyglot projec
 | `PATCH` | `/todos/{id}` | partial update (any subset of fields) | 200 |
 | `DELETE` | `/todos/{id}` | remove | 204 |
 | `GET` | `/openapi.json` | the OpenAPI spec | 200 |
+| `GET` | `/docs` | Swagger UI | 200 |
 
 Errors: `400` (invalid id or malformed body), `404` (no such todo), `500` (spec file
 unreadable).
@@ -53,7 +75,7 @@ curl -X DELETE localhost:8080/todos/<id>
 
 ## What C++ changed over the C version
 
-Same protocol work — the sockets, the raw HTTP text, and the `sigaction` shutdown are
+Same protocol work — the sockets, the raw HTTP text, and the signal handling are
 identical, because those belong to the operating system, not the language. What C++
 changed is the **materials**:
 
@@ -67,7 +89,7 @@ changed is the **materials**:
 | `snprintf` into a buffer | `std::format` (type-safe, grows to fit) |
 | `arc4random_buf` (BSD only) | `<random>` (portable) |
 
-The store is a single in-memory `std::vector<Todo>` — todos do **not** survive a restart
+The store is an in-memory `std::vector<Todo>` — todos do **not** survive a restart
 (see Roadmap).
 
 ## Design notes worth interrogating
@@ -80,15 +102,16 @@ The store is a single in-memory `std::vector<Todo>` — todos do **not** survive
   one response per request — plus one `close(client_fd)` at the bottom of the loop.
 - The JSON parser is deliberately naive (no real parsing, no escape handling). It trusts
   well-formed input — fine for learning, and a good thing to compare against a real parser.
+- `extern` vs definition, `#pragma once`, `inline constexpr` for header constants — the
+  split is where those stop being trivia and start mattering.
 
 ## Roadmap
 
 - [ ] **SQLite persistence** — replace the in-memory vector so todos survive a restart,
-      using prepared statements.
+      using prepared statements. Only `store.cpp` changes; handlers don't move.
 - [ ] **A small custom ORM** — wrap the SQL behind a repository (`TodoRepository.save()`,
-      `.all()`, `.find()`), so handlers never touch SQL directly. Learn what Prisma /
-      SQLAlchemy do under the hood by building a tiny one.
+      `.all()`, `.find()`), injected into the handlers (dependency injection) so they
+      depend on an interface, not the concrete store. Build what Prisma / SQLAlchemy are.
 - [ ] **A framework version (Crow)** — rebuild the same contract with a micro-framework
       to see what it deletes (the socket loop, the parser, the router) and what it adds
       (a thread pool → the shared store becomes a data race → a `std::mutex`).
-- [ ] `/docs` — a Swagger UI page that renders `openapi.json` in the browser.
