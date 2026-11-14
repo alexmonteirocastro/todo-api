@@ -1,62 +1,94 @@
 # Todo API — C++
 
-The same TodoMVC-style CRUD API as the C version, built **twice** in C++ to see the
-cost and benefit of a framework:
+A TodoMVC-style CRUD REST API written **from scratch** in C++ — raw POSIX sockets,
+hand-written HTTP and JSON, no framework. The same contract as the [C version](../C),
+rebuilt to see what C++ changes and what it leaves exactly as C.
 
-| | `no-framework/` | `framework/` |
-|---|---|---|
-| HTTP server | hand-written: `socket`/`bind`/`listen`/`accept` loop | Crow (`app.port(8080).run()`) |
-| Request parsing | `read()` raw bytes, split on `\r\n\r\n` | `crow::request`, `req.body` |
-| Routing | one big `if/else` on method + path | `CROW_ROUTE(...).methods(...)` |
-| Path params | `path.substr("/todos/")` | `/todos/<string>` capture |
-| JSON in | hand-rolled key scanner (no real parse) | `crow::json::load` (real parse) |
-| JSON out | string concatenation (**no escaping**) | `crow::json::wvalue` (**escapes**) |
-| Concurrency | single-threaded, no locks needed | multithreaded → needs `std::mutex` |
-| Ctrl-C | our own `sigaction` | Crow installs its own |
-| Lines of code | ~370 | ~230 |
-
-Both expose the identical contract (see `../C/openapi.json`): port **8080**, routes
-`GET/POST /todos`, `GET/PATCH/PUT/DELETE /todos/{id}`, plus `GET /openapi.json` and
-`GET /docs` (Swagger UI). Both pass the same 16-check lifecycle test.
+Single file: `main.cpp`. No framework, no external libraries — just the standard
+library and the OS socket API.
 
 ## Build & run
 
-**No framework** (nothing to install):
+Requires a C++20 compiler (for `std::format`).
+
 ```bash
-cd no-framework
-make run          # g++ -std=c++17 -Wall -Wextra -O2
+g++ -std=c++20 -Wall -Wextra -o server main.cpp
+./server
 ```
 
-**Framework (Crow)** — needs standalone Asio + the amalgamated header:
+On macOS, if the system `g++` (Apple Clang) lacks `std::format`, use Homebrew GCC:
+
 ```bash
-sudo apt-get install libasio-dev     # macOS: brew install asio
-cd framework
-make run          # `make` auto-downloads crow_all.h if missing
+brew install gcc
+g++-14 -std=c++20 -Wall -Wextra -o server main.cpp
 ```
 
-Then, against either:
+> **Run from the folder that holds `openapi.json`.** The server reads the spec with a
+> *relative* path, so `/openapi.json` resolves the file against your current working
+> directory — not where the binary lives.
+
+## Endpoints
+
+Listens on **port 8080**. Same contract as every language in the polyglot project.
+
+| Verb | Path | Does | Success |
+|---|---|---|---|
+| `GET` | `/todos` | list all | 200 |
+| `POST` | `/todos` | create (body: `{"title": "..."}`) | 201 |
+| `GET` | `/todos/{id}` | fetch one | 200 |
+| `PUT` | `/todos/{id}` | full replace (title + completed both required) | 200 |
+| `PATCH` | `/todos/{id}` | partial update (any subset of fields) | 200 |
+| `DELETE` | `/todos/{id}` | remove | 204 |
+| `GET` | `/openapi.json` | the OpenAPI spec | 200 |
+
+Errors: `400` (invalid id or malformed body), `404` (no such todo), `500` (spec file
+unreadable).
+
 ```bash
 curl localhost:8080/todos
 curl -X POST localhost:8080/todos -d '{"title":"Buy milk"}'
-open http://localhost:8080/docs
+curl -X PATCH localhost:8080/todos/<id> -d '{"completed":true}'
+curl -X DELETE localhost:8080/todos/<id>
 ```
-Put `openapi.json` in the folder you run from so `/openapi.json` and `/docs` work.
 
-## The point of doing it both ways
+## What C++ changed over the C version
 
-The no-framework build is the honest one for learning: **you are the framework**. You
-still write every byte of HTTP and JSON — C++ only hands you safer materials for it
-(`std::string` instead of `char[256]`, `std::vector` instead of a fixed array, RAII
-instead of hand-matched `close()`, `std::optional` instead of NULL sentinels).
+Same protocol work — the sockets, the raw HTTP text, and the `sigaction` shutdown are
+identical, because those belong to the operating system, not the language. What C++
+changed is the **materials**:
 
-Crow then shows what a framework actually buys: it deletes the socket loop, the parser,
-the router, and gives you *correct* JSON for free. But it also changes the shape of the
-problem — its thread pool means the shared store is now a data race, so a `std::mutex`
-appears. Nothing is free; the work moves.
+| C | C++ |
+|---|---|
+| `char title[256]` (fixed, can overflow) | `std::string` (grows, no overflow) |
+| `Todo todos[100]; int count;` | `std::vector<Todo>` (no cap, `.size()` knows) |
+| `strcmp(path, "/todos")` | `path == "/todos"` (value comparison) |
+| return `0/1` + out-param | `std::optional<std::string>` ("maybe missing" in the type) |
+| `const char* STATUS_200 = "200 OK"` | `enum class Status` (type-safe, can't pass a wrong value) |
+| `snprintf` into a buffer | `std::format` (type-safe, grows to fit) |
+| `arc4random_buf` (BSD only) | `<random>` (portable) |
 
-### Things worth interrogating
-- Why is the no-framework server's JSON output broken by a `"` in a title, but Crow's isn't?
-- Why does only the Crow version need a mutex? What exactly races?
-- `Fd` (RAII) vs. the C version's manual `close()` on every error branch — what can't you forget anymore?
-- `std::optional<std::string>` from `json_get_string` vs. C's "return 0/1 + out-param" — where did the "maybe missing" go?
-- Crow's `/todos/<string>` matches one segment. What does it do with `/todos/a/b`, and why?
+The store is a single in-memory `std::vector<Todo>` — todos do **not** survive a restart
+(see Roadmap).
+
+## Design notes worth interrogating
+
+- Why does `find_todo_item` return a `Todo*` and not a `Todo` copy? (So handlers mutate
+  the real stored item — and `nullptr` is a free "not found".)
+- `json_get_bool` returns `{present, valid, value}`, not a plain `std::optional<bool>`.
+  Why three states? (PATCH needs to tell "absent" from "garbage"; PUT doesn't.)
+- The handlers use early-`return` guard clauses, so there's no nested `else` and exactly
+  one response per request — plus one `close(client_fd)` at the bottom of the loop.
+- The JSON parser is deliberately naive (no real parsing, no escape handling). It trusts
+  well-formed input — fine for learning, and a good thing to compare against a real parser.
+
+## Roadmap
+
+- [ ] **SQLite persistence** — replace the in-memory vector so todos survive a restart,
+      using prepared statements.
+- [ ] **A small custom ORM** — wrap the SQL behind a repository (`TodoRepository.save()`,
+      `.all()`, `.find()`), so handlers never touch SQL directly. Learn what Prisma /
+      SQLAlchemy do under the hood by building a tiny one.
+- [ ] **A framework version (Crow)** — rebuild the same contract with a micro-framework
+      to see what it deletes (the socket loop, the parser, the router) and what it adds
+      (a thread pool → the shared store becomes a data race → a `std::mutex`).
+- [ ] `/docs` — a Swagger UI page that renders `openapi.json` in the browser.
