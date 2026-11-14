@@ -37,17 +37,19 @@ Errors: `400` (malformed / invalid id), `404` (not found), `500` (server error).
 
 ## Implementations
 
-| Language / Stack    | Status         | Folder          |
-| ------------------- | -------------- | --------------- |
-| C (POSIX sockets)   | ✅ Done         | [`c/`](./C)     |
-| C++ (POSIX sockets) | ✅ Done         | [`cpp/`](./C-plusplus) |
-| Rust                | ⬜ Planned      | `rust/`         |
-| Go                  | ⬜ Planned      | `go/`           |
-| Node (http)         | ⬜ Planned      | `node/`         |
-| Express             | ⬜ Planned      | `express/`      |
-| NestJS              | ⬜ Planned      | `nest/`         |
-| PHP                 | ⬜ Planned      | `php/`          |
-| Laravel             | ⬜ Planned      | `laravel/`      |
+| Language / Stack    | Status         | Folder                          |
+| ------------------- | -------------- | ------------------------------- |
+| C (POSIX sockets)   | ✅ Done         | [`C/`](./C)                     |
+| C++ (POSIX sockets) | ✅ Done         | [`C-plusplus/`](./C-plusplus)   |
+| Rust                | ⬜ Planned      | `rust/`                         |
+| Go                  | ⬜ Planned      | `go/`                           |
+| Node (http)         | ⬜ Planned      | `node/`                         |
+| Express             | ⬜ Planned      | `express/`                      |
+| NestJS              | ⬜ Planned      | `nest/`                         |
+| PHP                 | ⬜ Planned      | `php/`                          |
+| Laravel             | ⬜ Planned      | `laravel/`                      |
+
+The C++ folder is organised in two parts: `no-framework/` (done — raw sockets, same approach as C) and `framework/` (planned — the same contract rebuilt with the Crow micro-framework, to compare).
 
 ## Goal
 
@@ -57,16 +59,19 @@ Each version targets the same contract, so the interesting part is the *implemen
 
 ```
 todo-api/
-├── README.md        # this file
-├── c/               # the C implementation (done)
+├── README.md              # this file
+├── C/                     # the C implementation (done)
 │   ├── main.c
 │   ├── openapi.json
+│   ├── docs/
 │   └── README.md
-├── cpp/             # the C++ implementation (done)
-│   ├── main.cpp
-│   ├── openapi.json
+├── C-plusplus/            # the C++ implementation
+│   ├── no-framework/      #   done — raw sockets, single main.cpp (C++20)
+│   │   ├── main.cpp
+│   │   └── openapi.json
+│   ├── framework/         #   planned — Crow
 │   └── README.md
-└── …                # one folder per language, added over time
+└── …                      # one folder per language, added over time
 ```
 
 Each language folder has its own README with build and run instructions.
@@ -74,4 +79,3 @@ Each language folder has its own README with build and run instructions.
 ## License
 
 MIT
-
