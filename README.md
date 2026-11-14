@@ -39,8 +39,8 @@ Errors: `400` (malformed / invalid id), `404` (not found), `500` (server error).
 
 | Language / Stack    | Status         | Folder          |
 | ------------------- | -------------- | --------------- |
-| C (POSIX sockets)   | ✅ Done         | [`c/`](./c)     |
-| C++ (POSIX sockets) | ✅ Done         | [`cpp/`](./cpp) |
+| C (POSIX sockets)   | ✅ Done         | [`c/`](./C)     |
+| C++ (POSIX sockets) | ✅ Done         | [`cpp/`](./C-plusplus) |
 | Rust                | ⬜ Planned      | `rust/`         |
 | Go                  | ⬜ Planned      | `go/`           |
 | Node (http)         | ⬜ Planned      | `node/`         |
