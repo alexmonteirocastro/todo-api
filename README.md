@@ -37,17 +37,17 @@ Errors: `400` (malformed / invalid id), `404` (not found), `500` (server error).
 
 ## Implementations
 
-| Language / Stack    | Status         | Folder        |
-| ------------------- | -------------- | ------------- |
-| C (POSIX sockets)   | ✅ Done         | [`c/`](./c)   |
-| C++                 | ⬜ Planned      | `cpp/`        |
-| Rust                | ⬜ Planned      | `rust/`       |
-| Go                  | ⬜ Planned      | `go/`         |
-| Node (http)         | ⬜ Planned      | `node/`       |
-| Express             | ⬜ Planned      | `express/`    |
-| NestJS              | ⬜ Planned      | `nest/`       |
-| PHP                 | ⬜ Planned      | `php/`        |
-| Laravel             | ⬜ Planned      | `laravel/`    |
+| Language / Stack    | Status         | Folder          |
+| ------------------- | -------------- | --------------- |
+| C (POSIX sockets)   | ✅ Done         | [`c/`](./c)     |
+| C++ (POSIX sockets) | ✅ Done         | [`cpp/`](./cpp) |
+| Rust                | ⬜ Planned      | `rust/`         |
+| Go                  | ⬜ Planned      | `go/`           |
+| Node (http)         | ⬜ Planned      | `node/`         |
+| Express             | ⬜ Planned      | `express/`      |
+| NestJS              | ⬜ Planned      | `nest/`         |
+| PHP                 | ⬜ Planned      | `php/`          |
+| Laravel             | ⬜ Planned      | `laravel/`      |
 
 ## Goal
 
@@ -60,6 +60,10 @@ todo-api/
 ├── README.md        # this file
 ├── c/               # the C implementation (done)
 │   ├── main.c
+│   ├── openapi.json
+│   └── README.md
+├── cpp/             # the C++ implementation (done)
+│   ├── main.cpp
 │   ├── openapi.json
 │   └── README.md
 └── …                # one folder per language, added over time

@@ -1,7 +1,7 @@
 # Todo API — C++
 
 A TodoMVC-style CRUD REST API written **from scratch** in C++ — raw POSIX sockets,
-hand-written HTTP and JSON, no framework. The same contract as the [C version](..ls /C),
+hand-written HTTP and JSON, no framework. The same contract as the [C version](../C/),
 rebuilt to see what C++ changes and what it leaves exactly as C.
 
 Single file: `main.cpp`. No framework, no external libraries — just the standard
