@@ -1,4 +1,4 @@
-#include "routes.h"
+#include "handlers.h"
 // The route handlers pull together every other module
 #include "http.h" // Status, send_response, read_file, content types
 #include "json.h" // todo_to_json, todos_to_json, json_get_string, json_get_bool
@@ -7,7 +7,7 @@
 #include "model.h" // Todo, BoolField
 
 void handle_get_all(int fd) {
-    send_response(fd, Status::Ok, CONTENT_JSON, todos_to_json());
+    send_response(fd, Status::Ok, CONTENT_JSON, todos_to_json(store_all()));
 }
 
 void handle_post(int fd, const std::string& body) {
@@ -20,9 +20,14 @@ void handle_post(int fd, const std::string& body) {
     new_todo.id = generate_uuid();
     new_todo.title = *title;
     new_todo.completed = false;
-    todos.push_back(new_todo); // store grows by one item
+
+    // Insert into SQLite
+    if (!store_add(new_todo)) {
+        send_response(fd, Status::ServerError, CONTENT_JSON, "{\"error\": \"Could not save new TODO item\" }");
+        return;
+    }
     // Sends the latest created TODO item
-    send_response(fd, Status::Created, CONTENT_JSON, todo_to_json(todos.back()));
+    send_response(fd, Status::Created, CONTENT_JSON, todo_to_json(new_todo));
 }
 
 void handle_get_one(int fd, const std::string& id) {
@@ -32,8 +37,8 @@ void handle_get_one(int fd, const std::string& id) {
         return;
     } 
         
-    // Look it up
-    Todo* found = find_todo_item(id);
+    // Look it up in the database
+    auto found = store_get(id);
     if (!found) {
             send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"Item not Found\"}");
             return;
@@ -51,7 +56,7 @@ void handle_put(int fd, const std::string& id, const std::string& body) {
     } 
         
     // Look it up
-    Todo* found = find_todo_item(id);
+    auto found = store_get(id);
     if (!found) {
             send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"Item not Found\"}");
             return;
@@ -74,6 +79,12 @@ void handle_put(int fd, const std::string& id, const std::string& body) {
     // Replace both fields, respond 200
     found->title = *title;
     found->completed = completed.value;
+
+    if (!store_update(*found)) {
+        send_response(fd, Status::ServerError, CONTENT_JSON, "{\"error\": \"Could not update TODO item\" }");
+        return;
+    }
+
     send_response(fd, Status::Ok, CONTENT_JSON, todo_to_json(*found));
 }
 
@@ -85,7 +96,7 @@ void handle_patch(int fd, const std::string& id, const std::string& body) {
     } 
         
     // Look it up
-    Todo* found = find_todo_item(id);
+    auto found = store_get(id);
     if (!found) {
             send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"Item not Found\"}");
             return;
@@ -103,6 +114,11 @@ void handle_patch(int fd, const std::string& id, const std::string& body) {
     }
     if (completed.present) found->completed = completed.value;
 
+    if (!store_update(*found)) {
+        send_response(fd, Status::ServerError, CONTENT_JSON, "{\"error\": \"Could not update TODO item\" }");
+        return;
+    }
+
     send_response(fd, Status::Ok, CONTENT_JSON, todo_to_json(*found));
 }
 
@@ -113,15 +129,10 @@ void handle_delete(int fd, const std::string& id) {
         return;
     } 
         
-    // Look it up
-    Todo* found = find_todo_item(id);
-    if (!found) {
-            send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"Item not Found\"}");
-            return;
+    if (!store_remove(id)) {
+        send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"TODO item not found\"}");
+        return;
     }
-
-    // erase it, convert the pointer to an iterator by its offset from the start
-    todos.erase(todos.begin() + (found - todos.data()));
 
     // 204 No Content - Success, nothing to return
     send_response(fd, Status::NoContent, CONTENT_JSON, "");

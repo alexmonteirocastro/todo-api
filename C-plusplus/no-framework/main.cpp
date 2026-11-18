@@ -4,10 +4,11 @@
 #include <netinet/in.h> // sockaddr_in, INADDR_ANY, AF_INET
 #include <unistd.h> // close
 #include "signals.h"
+#include "store.h"
 #include <cerrno>
 #include <sstream>
 #include "http.h"
-#include "routes.h"
+#include "handlers.h"
 
 /**
  * C++ way to write #define PORT 8080
@@ -33,6 +34,11 @@ int main() {
     if (server_fd < 0) {
         std::perror("socket");
         return 1; 
+    }
+
+    if (!store_init("todos.db")) {
+        std::fprintf(stderr, "failed to open database \n");
+        return 1;
     }
 
     /**
