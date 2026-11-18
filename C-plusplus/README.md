@@ -46,20 +46,58 @@ Split into one module per concern — headers (`.h`) declare, sources (`.cpp`) d
 ```
 no-framework/
 ├── model.h            # the data types: Todo, BoolField (header-only)
-├── store.h / .cpp     # the SQLite store: init, add, all, get, update, remove, close
+├── todo_repository.h  # the TodoRepository interface: all, get, add, update, remove
+├── sqlite_todo_repository.h / .cpp  # the SQLite implementation of that interface
 ├── uuid.h / .cpp      # generate_uuid, is_valid_uuid
 ├── http.h / .cpp      # Status, status_line, send_response, read_file, content types
 ├── json.h / .cpp      # todo_to_json, todos_to_json, json_get_string, json_get_bool
 ├── signals.h / .cpp   # the SIGINT shutdown flag + handler
 ├── handlers.h / .cpp  # one function per route
-├── main.cpp           # socket setup, the accept loop, and routing
+├── main.cpp           # builds the repository, then socket setup, accept loop, routing
 ├── Makefile
 └── openapi.json
 ```
 
-A header *announces* what exists; exactly one `.cpp` *defines* it. The handlers only
-talk to the store through its functions — they never see SQL or the database
-connection, which is private to `store.cpp`.
+A header *announces* what exists; exactly one `.cpp` *defines* it.
+
+## The repository and dependency injection
+
+Storage sits behind an interface:
+
+```cpp
+class TodoRepository {
+public:
+    virtual std::vector<Todo>   all() = 0;
+    virtual std::optional<Todo> get(const std::string& id) = 0;
+    virtual bool add(const Todo& t) = 0;
+    virtual bool update(const Todo& t) = 0;
+    virtual bool remove(const std::string& id) = 0;
+    virtual ~TodoRepository() = default;
+};
+```
+
+`SqliteTodoRepository` implements it. The handlers take a `TodoRepository&` — the
+interface, not the SQLite class — so they never see SQL or the database connection.
+They're handed their storage instead of reaching for it: that's dependency injection.
+
+`main` is the only place that names SQLite:
+
+```cpp
+int main() {
+    try {
+        SqliteTodoRepository repo("todos.db");   // constructor opens the db
+        return run_server(repo);                 // inject it
+    }                                            // destructor closes the db
+    catch (const std::exception& e) {
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
+}
+```
+
+The database's lifetime is the repository object's lifetime (RAII), so there's no
+`close` call to forget. If the database can't be opened, the constructor throws and the
+server never starts.
 
 ## Endpoints
 
@@ -88,8 +126,9 @@ curl -X DELETE localhost:8080/todos/<id>
 
 ## Persistence with SQLite
 
-SQLite is a database that's just a file — no server to run. `store.cpp` opens
-`todos.db` at startup and creates the table if it's missing:
+SQLite is a database that's just a file — no server to run. The
+`SqliteTodoRepository` constructor opens `todos.db` and creates the table if it's
+missing:
 
 ```sql
 CREATE TABLE IF NOT EXISTS todos (
@@ -109,10 +148,10 @@ Every query uses a **prepared statement**, in four steps:
 Values are always bound, never pasted into the SQL string. That's what makes the store
 immune to SQL injection: a title like `'); DROP TABLE todos; --` is stored as a title.
 
-Updates follow a **fetch, modify, write back** pattern. `store_get` returns a *copy*
-(`std::optional<Todo>`), the handler changes the copy, and `store_update` saves it. PUT
-and PATCH differ only in how the handler builds the copy — the store writes the whole
-row either way.
+Updates follow a **fetch, modify, write back** pattern. `repo.get` returns a *copy*
+(`std::optional<Todo>`), the handler changes the copy, and `repo.update` saves it. PUT
+and PATCH differ only in how the handler builds the copy — the repository writes the
+whole row either way.
 
 ## What C++ changed over the C version
 
@@ -132,11 +171,18 @@ changed is the **materials**:
 
 ## Design notes worth interrogating
 
-- Why does `store_get` return a `std::optional<Todo>` *copy* and not a pointer? (The data
+- Why do the handlers take `TodoRepository&` and not `SqliteTodoRepository&`? (So they
+  depend on what storage can *do*, not how it's done. Any implementation can be plugged in.)
+- What do `virtual`, `= 0` and `override` each guarantee? (Runtime dispatch to the real
+  object; every implementation must provide the function; a typo in a signature is a
+  compile error instead of a silent new function.)
+- Why does `SqliteTodoRepository` delete its copy constructor? (It owns a database
+  connection — two copies would both close it.)
+- Why does `get` return a `std::optional<Todo>` *copy* and not a pointer? (The data
   lives in a file — there's nothing in memory to point at. Changing the copy changes
-  nothing until `store_update` writes it back.)
-- `store_update` and `store_remove` check `sqlite3_changes`. Why? (An UPDATE or DELETE
-  that matches no rows still "succeeds" — zero rows changed is how you detect a missing id.)
+  nothing until `update` writes it back.)
+- `update` and `remove` check `sqlite3_changes`. Why? (An UPDATE or DELETE that matches
+  no rows still "succeeds" — zero rows changed is how you detect a missing id.)
 - Bind positions start at **1**, result columns at **0**. Same library, two conventions.
 - `json_get_bool` returns `{present, valid, value}`, not a plain `std::optional<bool>`.
   Why three states? (PATCH needs to tell "absent" from "garbage"; PUT doesn't.)
@@ -151,9 +197,10 @@ changed is the **materials**:
 ## Roadmap
 
 - [x] **SQLite persistence** — todos survive a restart, using prepared statements.
-- [ ] **A small custom ORM** — wrap the store in a repository (`TodoRepository.save()`,
-      `.all()`, `.find()`), injected into the handlers (dependency injection) so they
-      depend on an interface, not the concrete store. Build what Prisma / SQLAlchemy are.
+- [x] **A repository for `Todo`** — a `TodoRepository` interface, implemented with
+      SQLite and injected into the handlers.
+- [ ] **An in-memory repository** — a second `TodoRepository` backed by a vector, swapped
+      in with one line in `main`, without touching a handler.
 - [ ] **A framework version (Crow)** — rebuild the same contract with a micro-framework
       to see what it deletes (the socket loop, the parser, the router) and what it adds
       (a thread pool → concurrent requests hit the same database connection).
