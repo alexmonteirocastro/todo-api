@@ -6,7 +6,7 @@ std::string todo_to_json(const Todo& t) {
     return "{\"id\": \"" + t.id + "\", \"title\": \"" + t.title + "\", \"completed\": " + (t.completed ? "true" : "false") + "}";
 }
 
-std::string todos_to_json() {
+std::string todos_to_json(const std::vector<Todo>& todos) {
     std::string out = "[";
     for (size_t i = 0; i < todos.size(); ++i) { // emoty store -> loop never runs -> []
         if (i > 0) out += ",";

@@ -4,13 +4,14 @@
 // ============================================================================
 #include <string>
 #include <optional>
+#include <vector>
 #include "model.h"
 
 /**
  * Serialize one TODO item and the whole store as a JSON array
  */
 std::string todo_to_json(const Todo& t);
-std::string todos_to_json();
+std::string todos_to_json(const std::vector<Todo>& todos);
 
 /**
  * pull title out of the JSON body, returning std::optional

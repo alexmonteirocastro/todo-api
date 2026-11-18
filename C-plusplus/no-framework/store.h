@@ -14,21 +14,32 @@
  */
 extern std::vector<Todo> todos; 
 
+/** Open the DB file and ensure the table exists */
+bool store_init(const std::string& path);
+
+/** Closign the DB connection */
+void store_close();
+
+/* Every todo (maybe empty)*/
+std::vector<Todo> store_all();
+
+/*One TODO item, or nothing*/
+std::optional<Todo> store_get(const std::string& id);
+
+/** 
+ * Insert a TODO item 
+ * true on success
+ * */
+bool store_add(const Todo& t);
+
 /**
- * Why return Todo* (a pointer), not Todo (a copy)? 
- * Because the caller is going to change the todo — found->title = .... 
- * If we returned a copy, the caller would edit a throwaway and the real one in the store would be untouched. 
- * A pointer points at the actual element inside todos, so writing through it changes the stored todo. 
- * And a pointer gives us a natural “not found” value: nullptr. 
- * This is the direct parallel to our C’s find_todo_by_id returning Todo* / NULL.
- * 
- * The & appears twice, doing two different jobs — worth separating them:
- * 
- * for (auto& t : todos) — the & makes t a reference to each element, so we’re looking at the real todos, not copies. 
- * (Not strictly required just to read t.id, but it avoids copying a whole Todo each iteration, 
- * and it’s needed so that &t on the next line is the address of the real element.)
- * 
- * return &t; — here & means “address of” — give me a pointer to this element. 
- * That’s the pointer we hand back.
+ * Save changes to an existing TODO item
+ * false if no such id
  */
-Todo* find_todo_item(const std::string& id);
+bool store_update(const Todo& t);
+
+/**
+ * Delete by id
+ * false if no such id
+ */
+bool store_remove(const std::string& id);
