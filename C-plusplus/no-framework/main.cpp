@@ -4,7 +4,8 @@
 #include <netinet/in.h> // sockaddr_in, INADDR_ANY, AF_INET
 #include <unistd.h> // close
 #include "signals.h"
-#include "store.h"
+#include "sqlite_todo_repository.h"
+#include <stdexcept>
 #include <cerrno>
 #include <sstream>
 #include "http.h"
@@ -18,7 +19,8 @@
  */
 constexpr int PORT = 8080; 
 
-int main() {
+// The server only knows the interface
+int run_server(TodoItems& repo) {
     /**
      * 1. Create a TCP socket over IPv4
      * 
@@ -36,17 +38,12 @@ int main() {
         return 1; 
     }
 
-    if (!store_init("todos.db")) {
-        std::fprintf(stderr, "failed to open database \n");
-        return 1;
-    }
 
     /**
      * (Optional) allow instant restart without "Address already in use"
      */
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
     /**
      * 2. Describe the address: IPv4, any network interface, port 8080
      * This struct says where to listen:
@@ -66,23 +63,23 @@ int main() {
     addr.sin_family = AF_INET;          // IPv4
     addr.sin_addr.s_addr = INADDR_ANY;  // 0.0.0.0 - listen on every interface
     addr.sin_port = htons(PORT);        // port 8080, in network byte order
-
+    
     /* 3. Bind the socket to that address/port */
     if (bind(server_fd, (sockaddr*)&addr, sizeof(addr)) < 0) {
         std::perror("bind");
         return 1;
     }
-
+    
     /* 4. Start listening (10 = how many pending connections may queue)*/
     if (listen(server_fd, 10) < 0) {
         std::perror("listen");
         return 1;
     }
-
+    
     std::printf("Listening on http://localhost:%d\n", PORT);
-
-   install_signal_handlers();
-   
+    
+    install_signal_handlers();
+    
     /**
      * 5. Accept connections, one at a time, forever
      */
@@ -105,40 +102,51 @@ int main() {
         }
         buf[n] = '\0';
         std::string request(buf, n); // bytes -> std::string
-
+    
         /**
          * 2. Parse the request line "METHOD PATH VERSION"
          */
         std::istringstream iss(request); // sscanf tidy C++ cousin
         std::string method, path, version;
         iss >> method >> path >> version; // splits on whitespace
-
+    
         std::printf("parsed -> method=%s path=%s\n", method.c_str(), path.c_str()); 
-
+    
         // Body, extracted once
         std::string body;
         size_t sep = request.find("\r\n\r\n");
         if(sep != std::string::npos) body = request.substr(sep + 4); // +4 skips the \r\n\r\n
-
+    
         /**
          * 3. Routing
          */
-        if (method == "GET" && path == "/todos")       handle_get_all(client_fd);
-        else if (method == "GET" && path.compare(0, 7, "/todos/") == 0) handle_get_one(client_fd, path.substr(7));
-        else if (method == "POST" && path == "/todos") handle_post(client_fd, body);
-        else if (method == "PUT" && path.compare(0, 7, "/todos/") == 0) handle_put(client_fd, path.substr(7), body);
-        else if (method == "PATCH" && path.compare(0, 7, "/todos/") == 0) handle_patch(client_fd, path.substr(7), body);
-        else if (method == "DELETE" && path.compare(0, 7, "/todos/") == 0) handle_delete(client_fd, path.substr(7));
+        if (method == "GET" && path == "/todos")       handle_get_all(client_fd, repo);
+        else if (method == "GET" && path.compare(0, 7, "/todos/") == 0) handle_get_one(client_fd, repo, path.substr(7));
+        else if (method == "POST" && path == "/todos") handle_post(client_fd, repo, body);
+        else if (method == "PUT" && path.compare(0, 7, "/todos/") == 0) handle_put(client_fd, repo, path.substr(7), body);
+        else if (method == "PATCH" && path.compare(0, 7, "/todos/") == 0) handle_patch(client_fd, repo, path.substr(7), body);
+        else if (method == "DELETE" && path.compare(0, 7, "/todos/") == 0) handle_delete(client_fd, repo, path.substr(7));
         else if (method == "GET" && path == "/openapi.json") handle_open_api(client_fd);
         else if (method == "GET" && path == "/docs") handle_docs(client_fd);
         else { 
             send_response(client_fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"Not Found\"}");
         }
-
+    
         close(client_fd); // hang up on THIS client. Kepp listening...
     }
-   
+    
     std::printf("Shutting down gracefully...\n");
     close(server_fd);
     return 0;
+}
+
+int main() {
+
+    try {
+        SqliteTodoItems repo("todos.db"); // Opens the db (constructor)
+        return run_server(repo); // Inject it
+    } catch (const std::exception& e) { // destructor: closes the DB, even on errors
+        std::fprintf(stderr, "fatal: %s\n", e.what());
+        return 1;
+    }
 }

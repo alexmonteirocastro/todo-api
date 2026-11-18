@@ -3,14 +3,14 @@
 #include "http.h" // Status, send_response, read_file, content types
 #include "json.h" // todo_to_json, todos_to_json, json_get_string, json_get_bool
 #include "uuid.h" // generate_uuid, is_valid_uuid
-#include "store.h" // todos, find_todo_item
+#include "todo_repository.h"
 #include "model.h" // Todo, BoolField
 
-void handle_get_all(int fd) {
-    send_response(fd, Status::Ok, CONTENT_JSON, todos_to_json(store_all()));
+void handle_get_all(int fd, TodoItems& repo) {
+    send_response(fd, Status::Ok, CONTENT_JSON, todos_to_json(repo.all()));
 }
 
-void handle_post(int fd, const std::string& body) {
+void handle_post(int fd, TodoItems& repo, const std::string& body) {
     auto title = json_get_string(body, "title");
     if(!title) {
         send_response(fd, Status::BadRequest, CONTENT_JSON, "{\"error\": \"Title is required\"}");
@@ -22,7 +22,7 @@ void handle_post(int fd, const std::string& body) {
     new_todo.completed = false;
 
     // Insert into SQLite
-    if (!store_add(new_todo)) {
+    if (!repo.add(new_todo)) {
         send_response(fd, Status::ServerError, CONTENT_JSON, "{\"error\": \"Could not save new TODO item\" }");
         return;
     }
@@ -30,7 +30,7 @@ void handle_post(int fd, const std::string& body) {
     send_response(fd, Status::Created, CONTENT_JSON, todo_to_json(new_todo));
 }
 
-void handle_get_one(int fd, const std::string& id) {
+void handle_get_one(int fd, TodoItems& repo, const std::string& id) {
     //. Validate the shape
     if (!is_valid_uuid(id)) {
         send_response(fd, Status::BadRequest, CONTENT_JSON, "{\"error\": \"Invalid id\"}");
@@ -38,7 +38,7 @@ void handle_get_one(int fd, const std::string& id) {
     } 
         
     // Look it up in the database
-    auto found = store_get(id);
+    auto found = repo.get(id);
     if (!found) {
             send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"Item not Found\"}");
             return;
@@ -48,7 +48,7 @@ void handle_get_one(int fd, const std::string& id) {
     send_response(fd, Status::Ok, CONTENT_JSON, todo_to_json(*found));
 }
 
-void handle_put(int fd, const std::string& id, const std::string& body) {
+void handle_put(int fd, TodoItems& repo, const std::string& id, const std::string& body) {
     //. Validate the shape
     if (!is_valid_uuid(id)) {
         send_response(fd, Status::BadRequest, CONTENT_JSON, "{\"error\": \"Invalid id\"}");
@@ -56,7 +56,7 @@ void handle_put(int fd, const std::string& id, const std::string& body) {
     } 
         
     // Look it up
-    auto found = store_get(id);
+    auto found = repo.get(id);
     if (!found) {
             send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"Item not Found\"}");
             return;
@@ -80,7 +80,7 @@ void handle_put(int fd, const std::string& id, const std::string& body) {
     found->title = *title;
     found->completed = completed.value;
 
-    if (!store_update(*found)) {
+    if (!repo.update(*found)) {
         send_response(fd, Status::ServerError, CONTENT_JSON, "{\"error\": \"Could not update TODO item\" }");
         return;
     }
@@ -88,7 +88,7 @@ void handle_put(int fd, const std::string& id, const std::string& body) {
     send_response(fd, Status::Ok, CONTENT_JSON, todo_to_json(*found));
 }
 
-void handle_patch(int fd, const std::string& id, const std::string& body) {
+void handle_patch(int fd, TodoItems& repo, const std::string& id, const std::string& body) {
     //. Validate the shape
     if (!is_valid_uuid(id)) {
         send_response(fd, Status::BadRequest, CONTENT_JSON, "{\"error\": \"Invalid id\"}");
@@ -96,7 +96,7 @@ void handle_patch(int fd, const std::string& id, const std::string& body) {
     } 
         
     // Look it up
-    auto found = store_get(id);
+    auto found = repo.get(id);
     if (!found) {
             send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"Item not Found\"}");
             return;
@@ -114,7 +114,7 @@ void handle_patch(int fd, const std::string& id, const std::string& body) {
     }
     if (completed.present) found->completed = completed.value;
 
-    if (!store_update(*found)) {
+    if (!repo.update(*found)) {
         send_response(fd, Status::ServerError, CONTENT_JSON, "{\"error\": \"Could not update TODO item\" }");
         return;
     }
@@ -122,14 +122,14 @@ void handle_patch(int fd, const std::string& id, const std::string& body) {
     send_response(fd, Status::Ok, CONTENT_JSON, todo_to_json(*found));
 }
 
-void handle_delete(int fd, const std::string& id) {
+void handle_delete(int fd, TodoItems& repo, const std::string& id) {
     //. Validate the shape
     if (!is_valid_uuid(id)) {
         send_response(fd, Status::BadRequest, CONTENT_JSON, "{\"error\": \"Invalid id\"}");
         return;
     } 
         
-    if (!store_remove(id)) {
+    if (!repo.remove(id)) {
         send_response(fd, Status::NotFound, CONTENT_JSON, "{\"error\": \"TODO item not found\"}");
         return;
     }
