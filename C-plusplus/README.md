@@ -1,15 +1,16 @@
 # Todo API — C++
 
-A TodoMVC-style CRUD REST API written **from scratch** in C++ — raw POSIX sockets,
-hand-written HTTP and JSON, no framework. The same contract as the [C version](../C),
-rebuilt to see what C++ changes and what it leaves exactly as C.
+A TodoMVC-style CRUD REST API in C++, built **twice** against the same contract as the
+[C version](../C):
 
-Todos are stored in **SQLite**, so they survive a server restart.
+| Folder | Approach | What it shows |
+|---|---|---|
+| [`no-framework/`](./no-framework) | raw POSIX sockets, hand-written HTTP and JSON | what C++ changes over C, and what it leaves exactly as C |
+| [`framework/`](./framework) | the [Crow](https://crowcpp.org) micro-framework | what a framework deletes, and what it adds |
 
-The code lives in `no-framework/`, split into modules by concern. (A `framework/`
-version using Crow is planned — see Roadmap.)
+Both store todos in **SQLite**, so they survive a server restart.
 
-## Build & run
+## Build & run — `no-framework/`
 
 Requires a C++20 compiler (for `std::format`) and the SQLite library.
 
@@ -39,7 +40,39 @@ On macOS:
 The database file `todos.db` is created on first run. It's your data, not source code,
 so it's git-ignored. Delete it to start with an empty list.
 
-## Project layout
+## Build & run — `framework/` (Crow)
+
+Requires a C++20 compiler, **CMake 3.16+**, and the SQLite library (ships with macOS).
+CMake downloads Crow and its networking dependency, Asio, on the first configure — there's
+nothing else to install.
+
+```bash
+cd framework
+cmake -B build && cmake --build build
+./build/todo_crow
+```
+
+The first configure takes a minute (it clones Crow and Asio into `build/_deps/`). After
+that, `cmake --build build` only recompiles what changed.
+
+Things that bit during setup, and why:
+
+- **Asio is pinned to 1.30.2.** Crow 1.2.0 still uses `asio::io_service`, which newer Asio
+  releases removed. A Homebrew `asio` in `/usr/local/include` can shadow the pinned copy
+  and bring the `io_service` errors back — if they reappear, `brew uninstall asio`.
+- **SQLite target name.** Newer CMake calls it `SQLite3::SQLite3`; older CMake only knows
+  `SQLite::SQLite3`. Switch the name in `CMakeLists.txt` if CMake says the target isn't found.
+- **VS Code can't find `crow.h`.** CMake writes `build/compile_commands.json`; point the
+  C/C++ extension at it in `.vscode/settings.json`:
+  ```json
+  { "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json" }
+  ```
+
+Paths: `openapi.json` is found via an **absolute path baked in by CMake** (`OPENAPI_PATH`),
+so it works from any folder. `todos.db` is still **relative** — it's created in whatever
+folder you start the server from.
+
+## Project layout — `no-framework/`
 
 Split into one module per concern — headers (`.h`) declare, sources (`.cpp`) define.
 
@@ -60,7 +93,19 @@ no-framework/
 
 A header *announces* what exists; exactly one `.cpp` *defines* it.
 
-## The repository and dependency injection
+## Project layout — `framework/`
+
+```
+framework/
+├── CMakeLists.txt   # fetches Crow + Asio, links SQLite, defines OPENAPI_PATH
+├── main.cpp         # everything: Todo, TodoRepository (SQLite), helpers, routes
+└── openapi.json
+```
+
+One file on purpose: with the socket loop, HTTP parser and router gone, what's left is
+small enough to read top to bottom.
+
+## The repository and dependency injection (`no-framework/`)
 
 Storage sits behind an interface:
 
@@ -101,7 +146,7 @@ server never starts.
 
 ## Endpoints
 
-Listens on **port 8080**. Same contract as every language in the polyglot project.
+Both versions listen on **port 8080**. Same contract as every language in the polyglot project.
 
 | Verb | Path | Does | Success |
 |---|---|---|---|
@@ -115,7 +160,9 @@ Listens on **port 8080**. Same contract as every language in the polyglot projec
 | `GET` | `/docs` | Swagger UI | 200 |
 
 Errors: `400` (invalid id or malformed body), `404` (no such todo), `500` (spec file
-unreadable, or the database failed to save).
+unreadable, or the database failed to save). In the Crow version, an unknown path also
+gets a JSON `404` from a catch-all route, and a database error becomes a `500` because
+Crow turns any uncaught exception into one.
 
 ```bash
 curl localhost:8080/todos
@@ -126,8 +173,8 @@ curl -X DELETE localhost:8080/todos/<id>
 
 ## Persistence with SQLite
 
-SQLite is a database that's just a file — no server to run. The
-`SqliteTodoRepository` constructor opens `todos.db` and creates the table if it's
+SQLite is a database that's just a file — no server to run. In both versions, the
+repository's constructor opens `todos.db` and creates the table if it's
 missing:
 
 ```sql
@@ -148,10 +195,14 @@ Every query uses a **prepared statement**, in four steps:
 Values are always bound, never pasted into the SQL string. That's what makes the store
 immune to SQL injection: a title like `'); DROP TABLE todos; --` is stored as a title.
 
-Updates follow a **fetch, modify, write back** pattern. `repo.get` returns a *copy*
-(`std::optional<Todo>`), the handler changes the copy, and `repo.update` saves it. PUT
+Updates follow a **fetch, modify, write back** pattern. The repository returns a *copy*
+(`std::optional<Todo>`), the handler changes the copy, and `update` saves it. PUT
 and PATCH differ only in how the handler builds the copy — the repository writes the
 whole row either way.
+
+In the Crow version, a small private `Statement` class wraps those four steps: its
+constructor prepares, `bind_text` / `bind_int` bind, `step()` runs, and its **destructor
+finalizes** — so an early return or an exception can't leak a statement.
 
 ## What C++ changed over the C version
 
@@ -168,6 +219,23 @@ changed is the **materials**:
 | `const char* STATUS_200 = "200 OK"` | `enum class Status` (type-safe, can't pass a wrong value) |
 | `snprintf` into a buffer | `std::format` (type-safe, grows to fit) |
 | `arc4random_buf` (BSD only) | `<random>` (portable) |
+
+## What Crow changed over the hand-written version
+
+| `no-framework/` | `framework/` (Crow) |
+|---|---|
+| `socket` / `bind` / `listen` / `accept` loop | `app.port(8080).multithreaded().run()` |
+| parse the request line and headers by hand | Crow parses; handlers get a `crow::request` |
+| `if (method == ... && path == ...)` routing | `CROW_ROUTE(app, "/todos/<string>").methods(...)` — the `<string>` arrives as a parameter |
+| naive hand-written JSON parser | `crow::json::load` → `rvalue` (read) and `wvalue` (write) |
+| `status_line` + `send_response` | `crow::response(code, body)` |
+| one request at a time | a **thread pool** — requests run concurrently |
+| `Makefile` | `CMakeLists.txt` with `FetchContent` for dependencies |
+
+The cost of the thread pool: several requests can now hit the one SQLite connection at
+the same moment. `TodoRepository` owns a `std::mutex`, and every method takes a
+`std::lock_guard` before touching the database — the routes never lock anything
+themselves.
 
 ## Design notes worth interrogating
 
@@ -194,6 +262,22 @@ changed is the **materials**:
   split (`-lsqlite3` only matters at link time) — the module split is where those stop
   being trivia and start mattering.
 
+Crow version:
+
+- Why does `DELETE` not call `find` first? (`remove` reports `sqlite3_changes`; zero rows
+  deleted *is* the 404. One query, and no gap between "check" and "delete" for another
+  request to slip into.)
+- Why does PATCH validate every field before changing any? (So a body like
+  `{"title":"X","completed":"yes"}` returns `400` *and* changes nothing.)
+- Why does the mutex live inside the repository, not in the routes? (The repository owns
+  the connection, so it protects it. A route can't forget to lock.)
+- PATCH still does fetch-then-write as two locked steps. Two simultaneous PATCHes on the
+  same todo can overwrite each other ("last write wins"). Acceptable here; how would you
+  close that gap?
+- `crow::json::wvalue` vs `rvalue`, `std::move` into the response array, a raw string
+  literal `R"(...)"` for the Swagger page — small C++ idioms the framework version
+  introduces.
+
 ## Roadmap
 
 - [x] **SQLite persistence** — todos survive a restart, using prepared statements.
@@ -201,6 +285,10 @@ changed is the **materials**:
       SQLite and injected into the handlers.
 - [ ] **An in-memory repository** — a second `TodoRepository` backed by a vector, swapped
       in with one line in `main`, without touching a handler.
-- [ ] **A framework version (Crow)** — rebuild the same contract with a micro-framework
-      to see what it deletes (the socket loop, the parser, the router) and what it adds
-      (a thread pool → concurrent requests hit the same database connection).
+- [x] **A framework version (Crow)** — the same contract with a micro-framework: it
+      deletes the socket loop, the parser and the router, and adds a thread pool, so
+      concurrent requests hit the same database connection (guarded by a mutex).
+- [ ] **Dependency injection in the Crow version** — today it uses a concrete
+      `TodoRepository` held in a global; move to the same interface + injection as
+      `no-framework/`.
+- [ ] **Split the Crow version into modules** — once it outgrows one file.

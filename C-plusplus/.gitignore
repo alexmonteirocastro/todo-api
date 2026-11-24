@@ -1,6 +1,7 @@
 # Build artifacts
 *.o
 server
+build/
 
 # macOS clutter
 .DS_Store
