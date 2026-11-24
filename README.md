@@ -37,40 +37,38 @@ Errors: `400` (malformed / invalid id), `404` (not found), `500` (server error).
 
 ## Implementations
 
-| Language / Stack    | Status         | Folder                          |
-| ------------------- | -------------- | ------------------------------- |
-| C (POSIX sockets)   | ✅ Done         | [`C/`](./C)                     |
-| C++ (POSIX sockets) | ✅ Done         | [`C-plusplus/`](./C-plusplus)   |
-| Rust                | ⬜ Planned      | `rust/`                         |
-| Go                  | ⬜ Planned      | `go/`                           |
-| Node (http)         | ⬜ Planned      | `node/`                         |
-| Express             | ⬜ Planned      | `express/`                      |
-| NestJS              | ⬜ Planned      | `nest/`                         |
-| PHP                 | ⬜ Planned      | `php/`                          |
-| Laravel             | ⬜ Planned      | `laravel/`                      |
-
-The C++ folder is organised in two parts: `no-framework/` (done — raw sockets, same approach as C) and `framework/` (planned — the same contract rebuilt with the Crow micro-framework, to compare).
+| Language / Stack              | Status    | Storage   | Folder                                                     |
+| ----------------------------- | --------- | --------- | ---------------------------------------------------------- |
+| C (POSIX sockets)             | ✅ Done    | in-memory | [`C/`](./C)                                                |
+| C++ (POSIX sockets)           | ✅ Done    | SQLite    | [`C-plusplus/no-framework/`](./C-plusplus/no-framework)    |
+| C++ (Crow)                    | ✅ Done    | SQLite    | [`C-plusplus/framework/`](./C-plusplus/framework)          |
+| Rust                          | ⬜ Planned |           | `rust/`                                                    |
+| Go                            | ⬜ Planned |           | `go/`                                                      |
+| Node (http)                   | ⬜ Planned |           | `node/`                                                    |
+| Express                       | ⬜ Planned |           | `express/`                                                 |
+| NestJS                        | ⬜ Planned |           | `nest/`                                                    |
+| PHP                           | ⬜ Planned |           | `php/`                                                     |
+| Laravel                       | ⬜ Planned |           | `laravel/`                                                 |
 
 ## Goal
 
 Each version targets the same contract, so the interesting part is the *implementation*, not the feature set. Building the hardest version first (C, from raw sockets) makes it clear exactly what every framework automates — by the time the same API is a handful of lines in Express or Laravel, you know what those lines are doing underneath.
 
+C++ is built twice on purpose: once by hand, once with the Crow micro-framework. The pair is the first direct look at what a framework deletes (the socket loop, the HTTP parser, the router) and what it adds (a thread pool, and with it the need to guard shared state).
+
 ## Structure
 
 ```
-todo-api/
+programama/
 ├── README.md              # this file
 ├── C/                     # the C implementation (done)
 │   ├── main.c
 │   ├── openapi.json
-│   ├── docs/
 │   └── README.md
-├── C-plusplus/            # the C++ implementation
-│   ├── no-framework/      #   done — raw sockets, single main.cpp (C++20)
-│   │   ├── main.cpp
-│   │   └── openapi.json
-│   ├── framework/         #   planned — Crow
-│   └── README.md
+├── C-plusplus/            # the C++ implementations (done)
+│   ├── README.md
+│   ├── no-framework/      # raw sockets, modules, repository + DI, SQLite
+│   └── framework/         # Crow, CMake, SQLite
 └── …                      # one folder per language, added over time
 ```
 
